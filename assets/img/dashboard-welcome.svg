@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="500" height="300" viewBox="0 0 500 300" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="500" height="300" rx="20" fill="#F6F9FF"/>
+  
+  <!-- User Icon -->
+  <circle cx="250" cy="100" r="50" fill="#0D6EFD" opacity="0.8"/>
+  <circle cx="250" cy="85" r="20" fill="white"/>
+  <path d="M250 140C227.909 140 210 122.091 210 100C210 77.9086 227.909 60 250 60C272.091 60 290 77.9086 290 100C290 122.091 272.091 140 250 140ZM250 70C233.431 70 220 83.4315 220 100C220 116.569 233.431 130 250 130C266.569 130 280 116.569 280 100C280 83.4315 266.569 70 250 70Z" fill="white"/>
+  <path d="M300 200C300 172.386 277.614 150 250 150C222.386 150 200 172.386 200 200" stroke="white" stroke-width="10" stroke-linecap="round"/>
+  
+  <!-- Decorative Elements -->
+  <circle cx="100" cy="50" r="20" fill="#0D6EFD" opacity="0.2"/>
+  <circle cx="400" cy="80" r="30" fill="#0D6EFD" opacity="0.2"/>
+  <circle cx="150" cy="250" r="25" fill="#0D6EFD" opacity="0.2"/>
+  <circle cx="350" cy="220" r="15" fill="#0D6EFD" opacity="0.2"/>
+  
+  <!-- Dashboard Elements -->
+  <rect x="50" y="180" width="80" height="10" rx="5" fill="#0D6EFD" opacity="0.6"/>
+  <rect x="50" y="200" width="60" height="10" rx="5" fill="#0D6EFD" opacity="0.4"/>
+  <rect x="50" y="220" width="70" height="10" rx="5" fill="#0D6EFD" opacity="0.6"/>
+  
+  <rect x="370" y="180" width="80" height="10" rx="5" fill="#0D6EFD" opacity="0.6"/>
+  <rect x="390" y="200" width="60" height="10" rx="5" fill="#0D6EFD" opacity="0.4"/>
+  <rect x="380" y="220" width="70" height="10" rx="5" fill="#0D6EFD" opacity="0.6"/>
+  
+  <!-- Welcome Text -->
+  <text x="250" y="270" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#012970" text-anchor="middle">Welcome to Your Dashboard</text>
+</svg>

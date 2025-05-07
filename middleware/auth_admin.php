@@ -1,0 +1,1 @@
+// File removed: Admin middleware no longer needed.

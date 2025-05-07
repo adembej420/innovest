@@ -1,0 +1,157 @@
+<?php
+// Initialize variables with default values
+$profile_photo = $profile_photo ?? 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y';
+$username = $username ?? 'User';
+$created_at = $created_at ?? 'Not available';
+$firstName = $firstName ?? '';
+$lastName = $lastName ?? '';
+$phone = $phone ?? 'Not set';
+$email = $email ?? 'Not set';
+$fullName = trim(($firstName . ' ' . $lastName)) ?: 'Not set';
+
+// Start output buffering
+ob_start();
+?>
+
+<section class="section">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="card">
+                    <div class="card-body">
+                        <!-- Profile Header -->
+                        <div class="text-center mb-4">
+                            <div class="position-relative d-inline-block mb-3">
+                                <img src="<?php echo htmlspecialchars($profile_photo); ?>" id="profilePreview" data-original="<?php echo htmlspecialchars($profile_photo); ?>" alt="Profile" class="profile-picture rounded-circle" style="width: 150px; height: 150px; object-fit: cover;">
+                                <button class="btn btn-sm btn-primary position-absolute bottom-0 end-0" onclick="document.getElementById('profilePhotoInput').click()">
+                                    <i class="bi bi-camera"></i>
+                                </button>
+                                <input type="file" id="profilePhotoInput" style="display: none;" accept="image/*" onchange="previewProfilePhoto(this)">
+                            </div>
+                            <div id="photoConfirmation" class="mt-2" style="display: none;">
+                                <button type="button" class="btn btn-sm btn-success" onclick="confirmProfilePhoto(event)">Save Photo</button>
+                                <button type="button" class="btn btn-sm btn-secondary" onclick="cancelProfilePhoto()">Cancel</button>
+                            </div>
+                            <h4 class="mb-0"><?php echo htmlspecialchars($username); ?></h4>
+                            <p class="text-muted">Member since <?php echo htmlspecialchars($created_at); ?></p>
+                        </div>
+
+                        <!-- Profile Content -->
+                        <div class="row mb-4">
+                            <!-- Personal Information -->
+                            <div class="col-12 mb-4">
+                                <div class="card profile-card">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Personal Information</h5>
+                                        
+                                        <!-- Name Section -->
+                                        <div class="profile-section mb-3">
+                                            <label class="form-label">Full Name</label>
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <span class="text-muted"><?php 
+                                                    $displayName = trim($firstName . ' ' . $lastName);
+                                                    echo htmlspecialchars($displayName !== '' ? $displayName : 'Not set');
+                                                ?></span>
+                                                <button class="btn btn-sm btn-outline-primary" onclick="toggleEdit('name')">Edit</button>
+                                            </div>
+                                            <div id="nameEdit" class="edit-form" style="display: none;">
+                                                <div class="row g-2">
+                                                    <div class="col-md-6">
+                                                        <input type="text" class="form-control" id="firstNameInput" placeholder="First Name" value="<?php echo htmlspecialchars($firstName); ?>">
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <input type="text" class="form-control" id="lastNameInput" placeholder="Last Name" value="<?php echo htmlspecialchars($lastName); ?>">
+                                                    </div>
+                                                </div>
+                                                <div class="mt-2">
+                                                    <button class="btn btn-sm btn-primary" onclick="saveEdit('name')">Save</button>
+                                                    <button class="btn btn-sm btn-secondary" onclick="cancelEdit('name')">Cancel</button>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Phone Section -->
+                                        <div class="profile-section mb-3">
+                                            <label class="form-label">Phone Number</label>
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <span class="text-muted"><?php echo htmlspecialchars($phone); ?></span>
+                                                <button class="btn btn-sm btn-outline-primary" onclick="toggleEdit('phone')">Edit</button>
+                                            </div>
+                                            <div id="phoneEdit" class="edit-form" style="display: none;">
+                                                <input type="tel" class="form-control" id="phoneInput" value="<?php echo htmlspecialchars($phone); ?>">
+                                                <div class="mt-2">
+                                                    <button class="btn btn-sm btn-primary" onclick="saveEdit('phone')">Save</button>
+                                                    <button class="btn btn-sm btn-secondary" onclick="cancelEdit('phone')">Cancel</button>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Email Section -->
+                                        <div class="profile-section mb-3">
+                                            <label class="form-label">Email Address</label>
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <span class="text-muted"><?php echo htmlspecialchars($email); ?></span>
+                                                <button class="btn btn-sm btn-outline-primary" onclick="toggleEdit('email')">Edit</button>
+                                            </div>
+                                            <div id="emailEdit" class="edit-form" style="display: none;">
+                                                <input type="email" class="form-control" id="emailInput" value="<?php echo htmlspecialchars($email); ?>">
+                                                <div class="mt-2">
+                                                    <button class="btn btn-sm btn-primary" onclick="saveEdit('email')">Save</button>
+                                                    <button class="btn btn-sm btn-secondary" onclick="cancelEdit('email')">Cancel</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Account Settings -->
+                            <div class="col-12">
+                                <div class="card profile-card">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Account Settings</h5>
+                                        
+                                        <!-- Password Section -->
+                                        <div class="profile-section">
+                                            <label class="form-label">Password</label>
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <span class="text-muted">••••••••</span>
+                                                <button class="btn btn-sm btn-outline-primary" onclick="toggleEdit('password')">Change</button>
+                                            </div>
+                                            <div id="passwordEdit" class="edit-form" style="display: none;">
+                                                <div class="mb-2">
+                                                    <label class="form-label">Current Password</label>
+                                                    <input type="password" class="form-control" id="currentPassword">
+                                                </div>
+                                                <div class="mb-2">
+                                                    <label class="form-label">New Password</label>
+                                                    <input type="password" class="form-control" id="newPassword">
+                                                </div>
+                                                <div class="mb-2">
+                                                    <label class="form-label">Confirm New Password</label>
+                                                    <input type="password" class="form-control" id="confirmPassword">
+                                                </div>
+                                                <div class="mt-2">
+                                                    <button class="btn btn-sm btn-primary" onclick="saveEdit('password')">Save</button>
+                                                    <button class="btn btn-sm btn-secondary" onclick="cancelEdit('password')">Cancel</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Back Button -->
+                        <div class="text-center">
+                            <a href="/gestion_userv2/gestion_user/public/index.php?page=userdashboard" class="btn btn-secondary">Back to Dashboard</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Custom JS -->
+<script src="/gestion_userv2/gestion_user/view/front-office/js/profile.js"></script>
