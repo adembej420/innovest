@@ -56,6 +56,7 @@ try {
     <link href="https://cdn.jsdelivr.net/npm/simple-datatables@7.1.2/dist/style.min.css" rel="stylesheet" />
     <link href="css/styles.css" rel="stylesheet" />
     <script src="https://use.fontawesome.com/releases/v6.3.0/js/all.js" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         body {
             background-color: #f5f6fa;
@@ -129,6 +130,19 @@ try {
             background-color: #c82333;
             color: #ffffff;
         }
+        .btn-export {
+            background-color: #28a745;
+            color: #ffffff;
+            padding: 0.5rem 1rem;
+            font-size: 0.95rem;
+            border-radius: 6px;
+            text-decoration: none;
+            transition: all 0.2s ease;
+        }
+        .btn-export:hover {
+            background-color: #218838;
+            color: #ffffff;
+        }
         .no-data {
             text-align: center;
             color: #6c757d;
@@ -146,6 +160,9 @@ try {
             border-color: #0d6efd;
             box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
         }
+        .input-group {
+            max-width: 350px;
+        }
         @media (max-width: 768px) {
             .table thead {
                 font-size: 0.75rem;
@@ -154,7 +171,7 @@ try {
                 font-size: 0.85rem;
                 padding: 0.75rem;
             }
-            .btn-action {
+            .btn-action, .btn-export {
                 padding: 0.3rem 0.6rem;
                 font-size: 0.75rem;
             }
@@ -166,6 +183,9 @@ try {
                 padding: 1rem;
             }
             #searchInput, #skillsSearchInput {
+                max-width: 100%;
+            }
+            .input-group {
                 max-width: 100%;
             }
         }
@@ -277,9 +297,10 @@ try {
                             Candidates DataTable
                         </div>
                         <div class="card-body table-container">
-                            <!-- Search Input for Candidates -->
-                            <div class="mb-3">
+                            <!-- Search Input and Export Button for Candidates -->
+                            <div class="mb-3 input-group">
                                 <input type="text" id="searchInput" class="form-control" placeholder="Search candidates by name, email, or phone..." aria-label="Search candidates" />
+                                <button id="exportCandidatesPDF" class="btn btn-export"><i class="fas fa-file-pdf me-1"></i>Export PDF</button>
                             </div>
                             <table id="datatablesSimple" class="table table-hover">
                                 <thead>
@@ -342,9 +363,10 @@ try {
                             Candidate Skills DataTable
                         </div>
                         <div class="card-body table-container">
-                            <!-- Search Input for Skills -->
-                            <div class="mb-3">
+                            <!-- Search Input and Export Button for Skills -->
+                            <div class="mb-3 input-group">
                                 <input type="text" id="skillsSearchInput" class="form-control" placeholder="Search skills by name or level..." aria-label="Search skills" />
+                                <button id="exportSkillsPDF" class="btn btn-export"><i class="fas fa-file-pdf me-1"></i>Export PDF</button>
                             </div>
                             <table id="datatablesSkills" class="table table-hover">
                                 <thead>
@@ -399,16 +421,146 @@ try {
     <script src="js/scripts.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/simple-datatables@7.1.2/dist/umd/simple-datatables.min.js" crossorigin="anonymous"></script>
     <script>
-        // Dynamic Search for Candidates DataTable
+        // Initialize DataTables
         const candidatesTable = new simpleDatatables.DataTable("#datatablesSimple");
+        const skillsTable = new simpleDatatables.DataTable("#datatablesSkills");
+
+        // Dynamic Search for Candidates DataTable
         document.getElementById("searchInput").addEventListener("input", function() {
             candidatesTable.search(this.value);
         });
 
         // Dynamic Search for Skills DataTable
-        const skillsTable = new simpleDatatables.DataTable("#datatablesSkills");
         document.getElementById("skillsSearchInput").addEventListener("input", function() {
             skillsTable.search(this.value);
+        });
+
+        // Export Candidates to PDF
+        document.getElementById("exportCandidatesPDF").addEventListener("click", function() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            const pageWidth = doc.internal.pageSize.width;
+            const margin = 10;
+            const tableWidth = pageWidth - 2 * margin;
+            const colWidths = [20, 30, 30, 40, 25, 30, 30, 40, 30];
+
+            doc.setFontSize(18);
+            doc.text("Candidates Report", margin, 20);
+            doc.setFontSize(10);
+            doc.text("Generated on: " + new Date().toLocaleDateString(), margin, 30);
+
+            let y = 40;
+            const headers = ["ID", "Nom", "Prénom", "Email", "Téléphone", "LinkedIn", "Portfolio", "Lettre de motivation", "Date d'enregistrement"];
+            const data = <?php echo json_encode($condidats); ?>.map(row => ({
+                values: [
+                    row.id,
+                    row.nom,
+                    row.prenom,
+                    row.email,
+                    row.telephone,
+                    row.linkedin || "-",
+                    row.portfolio || "-",
+                    row.lettre_motivation || "-",
+                    row.date_enregistrement
+                ],
+                linkedin: row.linkedin,
+                portfolio: row.portfolio
+            }));
+
+            doc.setFillColor(200, 220, 255);
+            doc.rect(margin, y, tableWidth, 10, 'F');
+            headers.forEach((header, i) => {
+                doc.setFont(undefined, 'bold');
+                doc.text(header, margin + colWidths.slice(0, i).reduce((a, b) => a + b, 0), y + 8);
+            });
+            y += 10;
+
+            data.forEach(row => {
+                if (y > 280) {
+                    doc.addPage();
+                    y = 20;
+                    doc.setFillColor(200, 220, 255);
+                    doc.rect(margin, y, tableWidth, 10, 'F');
+                    headers.forEach((header, i) => {
+                        doc.setFont(undefined, 'bold');
+                        doc.text(header, margin + colWidths.slice(0, i).reduce((a, b) => a + b, 0), y + 8);
+                    });
+                    y += 10;
+                }
+                row.values.forEach((cell, i) => {
+                    const xPos = margin + colWidths.slice(0, i).reduce((a, b) => a + b, 0);
+                    doc.setFont(undefined, 'normal');
+                    if (i === 5 && cell !== "-") { // LinkedIn column
+                        doc.setTextColor(0, 0, 255);
+                        doc.text("View", xPos, y + 8, { maxWidth: colWidths[i] });
+                        doc.link(xPos, y, 20, 10, { url: row.linkedin });
+                        doc.setTextColor(0, 0, 0);
+                    } else if (i === 6 && cell !== "-") { // Portfolio column
+                        doc.setTextColor(0, 0, 255);
+                        doc.text("View", xPos, y + 8, { maxWidth: colWidths[i] });
+                        doc.link(xPos, y, 20, 10, { url: row.portfolio });
+                        doc.setTextColor(0, 0, 0);
+                    } else {
+                        doc.text(String(cell), xPos, y + 8, { maxWidth: colWidths[i] });
+                    }
+                });
+                y += 10;
+            });
+
+            doc.save("candidates_report.pdf");
+        });
+
+        // Export Skills to PDF
+        document.getElementById("exportSkillsPDF").addEventListener("click", function() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            const pageWidth = doc.internal.pageSize.width;
+            const margin = 10;
+            const tableWidth = pageWidth - 2 * margin;
+            const colWidths = [25, 25, 40, 30];
+
+            doc.setFontSize(18);
+            doc.text("Candidate Skills Report", margin, 20);
+            doc.setFontSize(10);
+            doc.text("Generated on: " + new Date().toLocaleDateString(), margin, 30);
+
+            let y = 40;
+            const headers = ["Skill ID", "Candidate ID", "Skill Name", "Skill Level"];
+            const data = <?php echo json_encode($condidatsSkills); ?>.map(row => [
+                row.skill_id,
+                row.condidats_id,
+                row.skill_name,
+                row.skill_level
+            ]);
+
+            doc.setFillColor(200, 220, 255);
+            doc.rect(margin, y, tableWidth, 10, 'F');
+            headers.forEach((header, i) => {
+                doc.setFont(undefined, 'bold');
+                doc.text(header, margin + colWidths.slice(0, i).reduce((a, b) => a + b, 0), y + 8);
+            });
+            y += 10;
+
+            data.forEach(row => {
+                if (y > 280) {
+                    doc.addPage();
+                    y = 20;
+                    doc.setFillColor(200, 220, 255);
+                    doc.rect(margin, y, tableWidth, 10, 'F');
+                    headers.forEach((header, i) => {
+                        doc.setFont(undefined, 'bold');
+                        doc.text(header, margin + colWidths.slice(0, i).reduce((a, b) => a + b, 0), y + 8);
+                    });
+                    y += 10;
+                }
+                row.forEach((cell, i) => {
+                    doc.setFont(undefined, 'normal');
+                    doc.text(String(cell), margin + colWidths.slice(0, i).reduce((a, b) => a + b, 0), y + 8, { maxWidth: colWidths[i] });
+                });
+                y += 10;
+            });
+
+            doc.save("skills_report.pdf");
         });
     </script>
 </body>

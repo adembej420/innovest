@@ -11,6 +11,11 @@ if (!isset($_SESSION['csrf_token'])) {
 }
 $csrf_token = $_SESSION['csrf_token'];
 
+// Store error message in session to persist after reload
+if (!isset($_SESSION['form_error'])) {
+    $_SESSION['form_error'] = '';
+}
+
 define('BASE_URL', '/innovest/View/FrontOffice/');
 
 require_once __DIR__ . '/../../controller/CondidatsC.php';
@@ -28,25 +33,21 @@ try {
 } catch (Exception $e) {
     error_log("Initialization error: " . $e->getMessage());
     $error = "Server initialization error";
+    $_SESSION['form_error'] = $error;
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $request_id = uniqid('req_');
     error_log("[$request_id] Received POST request: " . print_r($_POST, true));
 
-    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+    // Regenerate CSRF token immediately
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    $_SESSION['form_error'] = ''; // Clear previous error on new submission
+
+    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $csrf_token) {
         $error = "Invalid CSRF token";
         error_log("[$request_id] CSRF validation failed");
-        if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
-            header('Content-Type: application/json');
-            http_response_code(403);
-            echo json_encode(['success' => false, 'message' => $error]);
-            exit;
-        }
-    }
-    $_SESSION['csrf_token'] = bin2hex(random_bytes(32)); // Regenerate token
-
-    if (
+    } elseif (
         isset($_POST["nom"], $_POST["prenom"], $_POST["email"], $_POST["telephone"])
         && !empty(trim($_POST["nom"])) && !empty(trim($_POST["prenom"]))
         && !empty(trim($_POST["email"])) && !empty(trim($_POST["telephone"]))
@@ -101,6 +102,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $condidat_id = $condidatsC->addCondidats($condidat);
                 error_log("[$request_id] Candidate inserted with ID: $condidat_id");
 
+                // Reset $error for skills processing
+                $skill_errors = "";
                 if (isset($_POST['competences']) && is_array($_POST['competences'])) {
                     error_log("[$request_id] Processing competences: " . print_r($_POST['competences'], true));
                     foreach ($_POST['competences'] as $index => $skillData) {
@@ -117,7 +120,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 error_log("[$request_id] Skill $index added with ID: $skill_id");
                             } catch (Exception $e) {
                                 error_log("[$request_id] Failed to add skill $index: " . $e->getMessage());
-                                $error .= "Failed to add skill '$skillData[nom]': " . $e->getMessage() . "; ";
+                                $skill_errors .= "Failed to add skill '$skillData[nom]': " . $e->getMessage() . "; ";
                             }
                         } else {
                             error_log("[$request_id] Skipping skill $index: Empty name or level");
@@ -127,54 +130,86 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     error_log("[$request_id] No competences provided in POST data");
                 }
 
-                $success = true;
-
-                if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
-                    header('Content-Type: application/json');
-                    echo json_encode([
-                        'success' => true,
-                        'message' => 'Your application has been submitted. Thank you!',
-                        'data' => ['condidat_id' => $condidat_id]
-                    ]);
-                    exit;
+                // Success is true if candidate was added
+                $success = isset($condidat_id);
+                if (!empty($skill_errors)) {
+                    $error = $skill_errors;
                 }
+
+                // Send SMS via Twilio API if submission was successful
+                if ($success) {
+                    $twilio_account_sid = 'AC490f0d6b61a9736d411d711ad477ab7d';
+                    $twilio_auth_token = '3c5edddd5fec740b1b7bc9f7c7efeb86';
+                    $twilio_from_number = '+13526346460';
+                    $twilio_to_number = '+21650735124';
+                    $message_body = 'A new candidate application was submitted.';
+
+                    $url = "https://api.twilio.com/2010-04-01/Accounts/$twilio_account_sid/Messages.json";
+
+                    $data = [
+                        'From' => $twilio_from_number,
+                        'To' => $twilio_to_number,
+                        'Body' => $message_body
+                    ];
+
+                    $ch = curl_init($url);
+                    curl_setopt($ch, CURLOPT_POST, true);
+                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                    curl_setopt($ch, CURLOPT_USERPWD, "$twilio_account_sid:$twilio_auth_token");
+                    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/x-www-form-urlencoded']);
+                    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data));
+
+                    $response = curl_exec($ch);
+                    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                    curl_close($ch);
+
+                    if ($http_code == 201) {
+                        $response_data = json_decode($response, true);
+                        error_log("[$request_id] Twilio SMS sent successfully, SID: " . $response_data['sid']);
+                    } else {
+                        error_log("[$request_id] Failed to send Twilio SMS, HTTP Code: $http_code, Response: $response");
+                        $error .= " Warning: Failed to send notification SMS.";
+                    }
+                }
+
             } catch (Exception $e) {
                 error_log("[$request_id] Error in condidats.php: " . $e->getMessage() . "\nStack Trace: " . $e->getTraceAsString());
                 $error = "Error: " . $e->getMessage();
-                if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
-                    header('Content-Type: application/json');
-                    http_response_code(500);
-                    echo json_encode(['success' => false, 'message' => $error]);
-                    exit;
-                }
-            }
-        } else {
-            if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
-                header('Content-Type: application/json');
-                http_response_code(400);
-                echo json_encode(['success' => false, 'message' => $error]);
-                exit;
+                $success = false;
             }
         }
     } else {
         $error = "Please fill in all required fields.";
         error_log("[$request_id] Form Validation Error: Missing required fields - " . print_r($_POST, true));
-        if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
-            header('Content-Type: application/json');
-            http_response_code(400);
-            echo json_encode(['success' => false, 'message' => $error]);
-            exit;
-        }
     }
 
-    if (isset($_GET['debug']) && $_GET['debug'] == 1) {
-        echo '<pre>';
-        echo 'Success: ' . ($success ? 'true' : 'false') . "\n";
-        echo 'Error: ' . htmlspecialchars($error) . "\n";
-        echo 'POST Data: ' . print_r($_POST, true) . "\n";
-        echo 'FILES Data: ' . print_r($_FILES, true) . "\n";
-        echo '</pre>';
+    if (!$success) {
+        $_SESSION['form_error'] = $error; // Store error in session for display after reload
     }
+
+    // Always return JSON response for AJAX
+    header('Content-Type: application/json');
+    $response = $success
+        ? ['success' => true, 'message' => 'Your application has been submitted. Thank you!' . (!empty($error) ? " Note: $error" : ""), 'data' => ['condidat_id' => $condidat_id ?? null]]
+        : ['success' => false, 'message' => $error ?: 'Unknown error occurred'];
+    error_log("[$request_id] Sending response: " . json_encode($response));
+    echo json_encode($response);
+    exit;
+}
+
+if (isset($_GET['debug']) && $_GET['debug'] == 1) {
+    echo '<pre>';
+    echo 'Success: ' . ($success ? 'true' : 'false') . "\n";
+    echo 'Error: ' . htmlspecialchars($error) . "\n";
+    echo 'POST Data: ' . print_r($_POST, true) . "\n";
+    echo 'FILES Data: ' . print_r($_FILES, true) . "\n";
+    echo '</pre>';
+}
+
+if (isset($_GET['get_csrf']) && $_GET['get_csrf'] === 'true') {
+    header('Content-Type: application/json');
+    echo json_encode(['csrf_token' => $_SESSION['csrf_token']]);
+    exit;
 }
 ?>
 
@@ -314,8 +349,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                 <p>Submit your information to join our talent pool</p>
                                             </div>
                                             <div class="container" data-aos="fade-up" data-aos-delay="100">
-                                                <?php if (!empty($error)): ?>
-                                                    <div class="alert alert-danger"><?php echo htmlspecialchars($error); ?></div>
+                                                <?php if (!empty($_SESSION['form_error']) && !$success): ?>
+                                                    <div class="alert alert-danger"><?php echo htmlspecialchars($_SESSION['form_error']); ?></div>
+                                                    <script>
+                                                        console.log('Server-side error: <?php echo addslashes($_SESSION['form_error']); ?>');
+                                                        // Clear session error after displaying
+                                                        <?php $_SESSION['form_error'] = ''; ?>
+                                                    </script>
                                                 <?php endif; ?>
                                                 <form action="<?php echo BASE_URL; ?>condidats.php" method="post" enctype="multipart/form-data" class="php-email-form">
                                                     <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($csrf_token); ?>">
@@ -341,9 +381,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                         <div class="col-12">
                                                             <textarea class="form-control" name="lettre_motivation" rows="5" placeholder="Cover Letter (Lettre de Motivation)"></textarea>
                                                         </div>
-                                                        <div class="col-12">
-                                                            <input type="file" name="cv" class="form-control" accept="application/pdf" placeholder="Upload CV (PDF)">
-                                                        </div>
+
                                                         <!-- Skills Section -->
                                                         <div class="col-12">
                                                             <h5>Skills</h5>
@@ -371,6 +409,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                                             <button type="button" class="btn btn-secondary mt-2" id="add-skill">Add Another Skill</button>
                                                         </div>
                                                         <div class="col-12 text-center">
+                                                            <div class="loading" style="display: none;">Loading...</div>
+                                                            <div class="error-message" style="display: none; color: red;"></div>
                                                             <div class="sent-message" style="display: none;">Your application has been submitted. Thank you!</div>
                                                             <button type="submit">Submit Application <span class="transition"></span><span class="gradient"></span><span class="transition"></span></button>
                                                         </div>
@@ -564,12 +604,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            console.log('Page loaded, initializing form handlers...');
             const skillsContainer = document.querySelector('.skills-container');
             const addSkillBtn = document.getElementById('add-skill');
             const form = document.querySelector('.php-email-form');
+            const submitButton = form.querySelector('button[type="submit"]');
+            const sentMessage = form.querySelector('.sent-message');
+            const errorMessage = form.querySelector('.error-message');
+            const loading = form.querySelector('.loading');
             let skillCount = 1;
 
+            // Ensure button is not disabled on page load
+            submitButton.disabled = false;
+            console.log('Submit button enabled:', !submitButton.disabled);
+
+            // Add new skill field
             addSkillBtn.addEventListener('click', function() {
+                console.log('Adding new skill field, current count:', skillCount);
                 const newSkill = document.createElement('div');
                 newSkill.className = 'skill-entry mb-3';
                 newSkill.innerHTML = `
@@ -595,20 +646,92 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 skillCount++;
             });
 
+            // Remove skill field
             skillsContainer.addEventListener('click', function(e) {
                 if (e.target.classList.contains('remove-skill')) {
-                    e.target.closest('.skill-entry').remove();
+                    console.log('Removing skill field...');
+                    const skillEntry = e.target.closest('.skill-entry');
+                    if (skillsContainer.querySelectorAll('.skill-entry').length > 1) {
+                        skillEntry.remove();
+                        console.log('Skill field removed, remaining:', skillsContainer.querySelectorAll('.skill-entry').length);
+                    } else {
+                        alert('At least one skill is required.');
+                        console.log('Cannot remove: At least one skill required');
+                    }
                 }
             });
 
+            // Function to reset the form and skills
+            function resetFormAndSkills() {
+                console.log('Resetting form and skills...');
+                form.reset();
+                skillsContainer.innerHTML = `
+                    <div class="skill-entry mb-3">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <input type="text" class="form-control" name="competences[0][nom]" placeholder="Skill Name" required>
+                            </div>
+                            <div class="col-md-4">
+                                <select class="form-select" name="competences[0][niveau]" required>
+                                    <option value="">Select Level</option>
+                                    <option value="Beginner">Beginner</option>
+                                    <option value="Intermediate">Intermediate</option>
+                                    <option value="Advanced">Advanced</option>
+                                    <option value="Expert">Expert</option>
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <button type="button" class="btn btn-danger remove-skill w-100">Remove</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                skillCount = 1;
+                console.log('Form reset complete. Skill count:', skillCount);
+            }
+
+            // Function to update CSRF token
+            function updateCsrfToken() {
+                console.log('Fetching new CSRF token...');
+                const csrfInput = form.querySelector('input[name="csrf_token"]');
+                if (!csrfInput) {
+                    console.error('CSRF input not found');
+                    return;
+                }
+                fetch('<?php echo BASE_URL; ?>condidats.php?get_csrf=true', {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                })
+                .then(response => {
+                    if (!response.ok) throw new Error('CSRF fetch failed: ' + response.status);
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.csrf_token) {
+                        csrfInput.value = data.csrf_token;
+                        console.log('CSRF token updated:', data.csrf_token);
+                    } else {
+                        console.error('CSRF token not found in response:', data);
+                    }
+                })
+                .catch(err => console.error('Failed to update CSRF token:', err));
+            }
+
+            // Form submission handler
             function formSubmitHandler(e) {
                 e.preventDefault();
-                const submitButton = form.querySelector('button[type="submit"]');
-                submitButton.disabled = true; // Disable button to prevent multiple submissions
+                console.log('Form submission started...');
 
+                // Reset messages
+                sentMessage.style.display = 'none';
+                errorMessage.style.display = 'none';
+                loading.style.display = 'block';
+
+                // Validate skills
                 const skillInputs = document.querySelectorAll('.skill-entry input[name$="[nom]"]');
                 const skillSelects = document.querySelectorAll('.skill-entry select[name$="[niveau]"]');
                 let hasValidSkills = true;
+
                 skillInputs.forEach((input, index) => {
                     const select = skillSelects[index];
                     if (input.value.trim() === '' || !select.value) {
@@ -620,71 +743,97 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         select.classList.remove('is-invalid');
                     }
                 });
+
                 if (!hasValidSkills) {
-                    const errorMessage = document.querySelector('.error-message');
-                    errorMessage.textContent = 'Please fill in all skill names and levels';
+                    console.log('Validation failed: Skills incomplete');
+                    errorMessage.textContent = 'Please fill in all skill names and levels.';
                     errorMessage.style.display = 'block';
+                    loading.style.display = 'none';
                     submitButton.disabled = false;
+                    errorMessage.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     return;
                 }
 
+                // Check HTML5 form validation
+                if (!form.checkValidity()) {
+                    console.log('HTML5 validation failed');
+                    form.reportValidity();
+                    loading.style.display = 'none';
+                    submitButton.disabled = false;
+                    errorMessage.textContent = 'Please fill in all required fields.';
+                    errorMessage.style.display = 'block';
+                    errorMessage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    return;
+                }
+
+                // Disable button during submission
+                submitButton.disabled = true;
+                console.log('Submit button disabled:', submitButton.disabled);
+
                 const formData = new FormData(form);
-                console.log('FormData:', Array.from(formData.entries()));
-                const sentMessage = document.querySelector('.sent-message');
-                const errorMessage = document.querySelector('.error-message');
-                const loading = document.querySelector('.loading');
-
-                // Reset form
-                form.reset();
-                const skillEntries = document.querySelectorAll('.skill-entry');
-                skillEntries.forEach((entry, index) => {
-                    if (index > 0) entry.remove();
-                });
-                skillCount = 1;
-
-                loading.style.display = 'block';
-                sentMessage.style.display = 'none';
-                errorMessage.style.display = 'none';
+                console.log('FormData prepared for submission');
 
                 fetch('<?php echo BASE_URL; ?>condidats.php', {
                     method: 'POST',
                     body: formData
                 })
                 .then(response => {
-                    console.log('Response Status:', response.status);
+                    console.log('Fetch response status:', response.status);
                     if (!response.ok) {
-                        return response.text().then(text => {
-                            throw new Error('Network response was not ok: ' + response.status + ' ' + text);
-                        });
+                        throw new Error('Network response was not ok: ' + response.statusText);
                     }
-                    return response.json().catch(error => {
-                        throw new Error('Invalid JSON response: ' + error.message);
-                    });
+                    // First, get the raw text to inspect the response
+                    return response.text();
                 })
-                .then(data => {
-                    console.log('Response Data:', data);
-                    loading.style.display = 'none';
-                    if (data.success) {
-                        sentMessage.style.display = 'block';
-                    } else {
-                        errorMessage.textContent = data.message || 'Unknown server error';
-                        errorMessage.style.display = 'block';
+                .then(text => {
+                    console.log('Raw response:', text);
+                    try {
+                        const data = JSON.parse(text);
+                        console.log('Parsed JSON:', data);
+                        loading.style.display = 'none';
+                        if (data.success) {
+                            console.log('Submission successful, showing success message');
+                            sentMessage.style.display = 'block';
+                            sentMessage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            resetFormAndSkills();
+                            console.log('Attempting page reload...');
+                            location.reload(); // Immediate page reload on success
+                        } else {
+                            console.log('Submission failed:', data.message);
+                            errorMessage.textContent = data.message || 'Unknown server error';
+                            errorMessage.style.display = 'block';
+                            errorMessage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                    } catch (parseError) {
+                        console.error('JSON parsing failed:', parseError, 'Raw response:', text);
+                        throw new Error('Failed to parse JSON: ' + parseError.message);
                     }
                 })
                 .catch(error => {
-                    console.log('Fetch Error:', error);
+                    console.error('Fetch error:', error);
                     loading.style.display = 'none';
-                    errorMessage.textContent = 'An error occurred while submitting the form: ' + error.message;
+                    errorMessage.textContent = 'An error occurred: ' + error.message;
                     errorMessage.style.display = 'block';
+                    errorMessage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    resetFormAndSkills();
+                    updateCsrfToken();
                 })
                 .finally(() => {
-                    submitButton.disabled = false; // Re-enable button
+                    console.log('Submission process completed');
+                    submitButton.disabled = false;
                 });
             }
 
             // Remove any existing listeners and add the submit handler
             form.removeEventListener('submit', formSubmitHandler);
             form.addEventListener('submit', formSubmitHandler);
+            console.log('Form submit handler attached');
+
+            // If there's an error message from session, ensure it's visible
+            if (errorMessage.textContent) {
+                errorMessage.style.display = 'block';
+                errorMessage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
         });
     </script>
 </body>
